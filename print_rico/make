@@ -1,0 +1,3 @@
+#!/bin/usr/bash
+nasm -f elf64 -Ox uebung_2c.asm
+ld -o uebung_2c uebung_2c.o

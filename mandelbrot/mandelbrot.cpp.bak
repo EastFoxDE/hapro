@@ -1,0 +1,258 @@
+////////////////////////////////////////////////////
+
+/*  Some values are modifiable, see settings.txt  */
+
+/*        DO NOT MODIFY BEYOND THIS POINT!        */
+
+////////////////////////////////////////////////////
+
+#include <stdio.h>
+#include <omp.h>
+#include <SDL2/SDL.h>
+#include <math.h>
+#include <omp.h>
+#include <unistd.h>
+
+//Initialization
+int threads;
+long double colorMulti = 1.0;
+int viewSequence;
+int zoom;
+int zoomIteration;
+int depth;
+int max;
+int width;
+int height;
+long double offset_Re;
+long double offset_Im;
+
+//Chat-GPT functions for reading the values from the settings.txt, see end of code
+char *trimWhitespace(char *str);
+void loadSettings(const char *filename);
+
+//Color a specific pixel
+void putPixel(SDL_Surface *surface, int X, int Y, int color) {
+	unsigned char *scr = (unsigned char *)(surface->pixels);
+	scr += Y * surface->pitch + X * 4;
+	*((unsigned int *)scr) = color;
+}
+
+//Magic :-)
+//Check if complex num is part of Mandelbrot (|zn| > 4)
+unsigned int checkMandelbrot(long double Re, long double Im){
+	long double zn_absolut = 0;
+	long double zn_Re = 0;
+	long double zn_Im = 0;
+	long double temp = 0;
+
+	// i = 0 is skipped, because z0 = 0
+	for(int i=1; i<=depth; i++){
+		//Calculate new value of complex num
+		temp = (zn_Re*zn_Re) - (zn_Im*zn_Im) + Re;
+		zn_Im = 2*zn_Re*zn_Im + Im;
+		zn_Re = temp;
+
+		//Calculate absolute
+		zn_absolut = sqrt(zn_Re*zn_Re + zn_Im*zn_Im);
+
+		//Check if Mandelbrot-Criteria is met
+		if(zn_absolut > 4){
+			return (int)(i*colorMulti);
+		}
+	}
+	//if not in mandelbrot, return color black
+	return 255;
+}
+
+int main(int argc, char** argv) {
+
+	//Color scheme
+	unsigned int palette[256] = {
+	0x00200000,0x00240000,0x00280000,0x002C0000,0x00300000,0x00340000,0x00380000,0x003C0000,
+	0x00400000,0x00440000,0x00480000,0x004C0000,0x00500000,0x00540000,0x00580000,0x005C0000,
+	0x00600000,0x00640000,0x00680000,0x006C0000,0x00700000,0x00740000,0x00780000,0x007C0000,
+	0x00800000,0x00840000,0x00880000,0x008C0000,0x00900000,0x00940000,0x00980000,0x009C0000,
+	0x00A00000,0x00A40000,0x00A80000,0x00AC0000,0x00B00000,0x00B40000,0x00B80000,0x00BC0000,
+	0x00C00000,0x00C40000,0x00C80000,0x00CC0000,0x00D00000,0x00D40000,0x00D80000,0x00DC0000,
+	0x00E00000,0x00E40000,0x00E80000,0x00EC0000,0x00F00000,0x00F40000,0x00F80000,0x00FC0000,
+	0x00FF0000,0x00FF0400,0x00FF0800,0x00FF0C00,0x00FF1000,0x00FF1400,0x00FF1800,0x00FF1C00,
+	0x00FF2000,0x00FF2400,0x00FF2800,0x00FF2C00,0x00FF3000,0x00FF3400,0x00FF3800,0x00FF3C00,
+	0x00FF4000,0x00FF4400,0x00FF4800,0x00FF4C00,0x00FF5000,0x00FF5400,0x00FF5800,0x00FF5C00,
+	0x00FF6000,0x00FF6400,0x00FF6800,0x00FF6C00,0x00FF7000,0x00FF7400,0x00FF7800,0x00FF7C00,
+	0x00FF8000,0x00FF8400,0x00FF8800,0x00FF8C00,0x00FF9000,0x00FF9400,0x00FF9800,0x00FF9C00,
+	0x00FFA000,0x00FFA400,0x00FFA800,0x00FFAC00,0x00FFB000,0x00FFB400,0x00FFB800,0x00FFBC00,
+	0x00FFC000,0x00FFC400,0x00FFC800,0x00FFCC00,0x00FFD000,0x00FFD400,0x00FFD800,0x00FFDC00,
+	0x00FFE000,0x00FFE400,0x00FFE800,0x00FFEC00,0x00FFF000,0x00FFF400,0x00FFF800,0x00FFFC00,
+	0x00FFFF00,0x00FFFF02,0x00FFFF04,0x00FFFF06,0x00FFFF08,0x00FFFF0A,0x00FFFF0C,0x00FFFF0E,
+	0x00FFFF10,0x00FFFF12,0x00FFFF14,0x00FFFF16,0x00FFFF18,0x00FFFF1A,0x00FFFF1C,0x00FFFF1E,
+	0x00FFFF20,0x00FFFF22,0x00FFFF24,0x00FFFF26,0x00FFFF28,0x00FFFF2A,0x00FFFF2C,0x00FFFF2E,
+	0x00FFFF30,0x00FFFF32,0x00FFFF34,0x00FFFF36,0x00FFFF38,0x00FFFF3A,0x00FFFF3C,0x00FFFF3E,
+	0x00FFFF40,0x00FFFF42,0x00FFFF44,0x00FFFF46,0x00FFFF48,0x00FFFF4A,0x00FFFF4C,0x00FFFF4E,
+	0x00FFFF50,0x00FFFF52,0x00FFFF54,0x00FFFF56,0x00FFFF58,0x00FFFF5A,0x00FFFF5C,0x00FFFF5E,
+	0x00FFFF60,0x00FFFF62,0x00FFFF64,0x00FFFF66,0x00FFFF68,0x00FFFF6A,0x00FFFF6C,0x00FFFF6E,
+	0x00FFFF70,0x00FFFF72,0x00FFFF74,0x00FFFF76,0x00FFFF78,0x00FFFF7A,0x00FFFF7C,0x00FFFF7E,
+	0x00FFFF80,0x00FFFF82,0x00FFFF84,0x00FFFF86,0x00FFFF88,0x00FFFF8A,0x00FFFF8C,0x00FFFF8E,
+	0x00FFFF90,0x00FFFF92,0x00FFFF94,0x00FFFF96,0x00FFFF98,0x00FFFF9A,0x00FFFF9C,0x00FFFF9E,
+	0x00FFFFA0,0x00FFFFA2,0x00FFFFA4,0x00FFFFA6,0x00FFFFA8,0x00FFFFAA,0x00FFFFAC,0x00FFFFAE,
+	0x00FFFFB0,0x00FFFFB2,0x00FFFFB4,0x00FFFFB6,0x00FFFFB8,0x00FFFFBA,0x00FFFFBC,0x00FFFFBE,
+	0x00FFFFC0,0x00FFFFC2,0x00FFFFC4,0x00FFFFC6,0x00FFFFC8,0x00FFFFCA,0x00FFFFCC,0x00FFFFCE,
+	0x00FFFFD0,0x00FFFFD2,0x00FFFFD4,0x00FFFFD6,0x00FFFFD8,0x00FFFFDA,0x00FFFFDC,0x00FFFFDE,
+	0x00FFFFE0,0x00FFFFE2,0x00FFFFE4,0x00FFFFE6,0x00FFFFE8,0x00FFFFEA,0x00FFFFEC,0x00FFFFEE,
+	0x00FFFFF0,0x00FFFFF2,0x00FFFFF4,0x00FFFFF6,0x00FFFFF8,0x00FFFFFA,0x00FFFFFC,0x00FFFFFE,
+	0x00000000};
+
+	//Read values
+	loadSettings("settings.txt");
+
+	//Make sure that the iteration-depth meets the color scheme to prevent segmenation fault
+	colorMulti = 256 / (float)depth;
+
+	//Calculate where the axis are
+	int Re_axis = width/2+100;
+	int Im_axis = height/2;
+
+	//Track iterations
+	int run = 1;
+
+	//SDL initialization
+	SDL_Event event;
+        SDL_Renderer *renderer;
+        SDL_Window *window;
+        SDL_Init(SDL_INIT_VIDEO);
+        SDL_CreateWindowAndRenderer(width, height, 0, &window, &renderer);
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+	SDL_RenderClear(renderer);
+	SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+   	for (int i = 0; i < width; ++i)
+        	SDL_RenderDrawPoint(renderer, i, i);
+    	SDL_RenderPresent(renderer);
+    	SDL_Surface *surface = SDL_GetWindowSurface(window);
+
+	//Set the number of threads
+	omp_set_num_threads(threads);
+
+	//Init for window title
+        char buf[100];
+        SDL_SetWindowTitle(window, buf);
+        int ticks = SDL_GetTicks();
+
+	//Endless loop until max iterations is hit
+	while (1) {
+		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+        	SDL_RenderClear(renderer);
+        	SDL_LockSurface(surface);
+
+		//Here is where the magic happens :-)
+		#pragma omp parallel for default(shared) schedule(dynamic, 10) //private (Re, Im) schedule(dynamic,10)
+		for(int x=0; x<width-1; x++){
+			for(int y=0; y<height-1; y++){
+				long double Re = ((long double)(x-Re_axis))/zoom + offset_Re;
+				long double Im = ((long double)(y-Im_axis))/zoom + offset_Im;
+				putPixel(surface, x, y, palette[checkMandelbrot(Re, Im)]);
+			}
+		}
+
+		SDL_UnlockSurface(surface);
+       		SDL_UpdateWindowSurface( window );
+
+		//Change the window title
+		sprintf(buf, "Run: %i  Time: %dms", run, SDL_GetTicks()-ticks);
+                SDL_SetWindowTitle(window, buf);
+
+		//View the first sequence and last sequence for longer
+		if(run == 1){
+			sprintf(buf, "WAITING (%d seconds) Run: %i  Time: %dms", viewSequence/1000, run, SDL_GetTicks()-ticks);
+                        SDL_SetWindowTitle(window, buf);
+			usleep(viewSequence*1000);
+		} else if(run == max){
+			sprintf(buf, "FINISHED Run: %i  Time: %dms", run, SDL_GetTicks()-ticks);
+                	SDL_SetWindowTitle(window, buf);
+			while(1){ usleep(1000000*120); }
+			return EXIT_SUCCESS;
+		}
+
+		//Zoom more in
+		zoom += zoomIteration;
+		run++;
+		ticks = SDL_GetTicks();
+
+		if (SDL_PollEvent(&event) && event.type == SDL_QUIT)
+    			break;
+    }
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return EXIT_SUCCESS;
+}
+
+/* CHAT-GPT FUNCTIONS */
+// Function to trim whitespace from a string (helper function)
+char *trimWhitespace(char *str) {
+    char *end;
+
+    // Trim leading space
+    while(isspace((unsigned char)*str)) str++;
+
+    if(*str == 0)  // All spaces?
+        return str;
+
+    // Trim trailing space
+    end = str + strlen(str) - 1;
+    while(end > str && isspace((unsigned char)*end)) end--;
+
+    // Write new null terminator
+    *(end+1) = 0;
+
+    return str;
+}
+
+// Function to load the settings from the file
+void loadSettings(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        printf("Error opening file '%s'\n", filename);
+        exit(1);
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        // Skip comments and empty lines
+        if (line[0] == '#' || line[0] == '\n') {
+            continue;
+        }
+
+        char *key = strtok(line, "=");
+        char *value = strtok(NULL, "=");
+
+        if (key && value) {
+            key = trimWhitespace(key);
+            value = trimWhitespace(value);
+
+            // Now assign values based on the key
+            if (strcmp(key, "viewSequence") == 0) {
+                viewSequence = atoi(value);
+            } else if (strcmp(key, "zoom") == 0) {
+                zoom = atoi(value);
+            } else if (strcmp(key, "zoomIteration") == 0) {
+                zoomIteration = atoi(value);
+            } else if (strcmp(key, "depth") == 0) {
+                depth = atoi(value);
+            } else if (strcmp(key, "max") == 0) {
+                max = atoi(value);
+	    } else if (strcmp(key, "width") == 0) {
+		width = atoi(value);
+	    } else if (strcmp(key, "height") == 0) {
+		height = atoi(value);
+            } else if (strcmp(key, "offset_Re") == 0) {
+                offset_Re = strtold(value, NULL);
+            } else if (strcmp(key, "offset_Im") == 0) {
+                offset_Im = strtold(value, NULL);
+	    } else if (strcmp(key, "threads") == 0) {
+                threads = strtold(value, NULL);
+            }
+
+        }
+    }
+
+    fclose(file);
+}
