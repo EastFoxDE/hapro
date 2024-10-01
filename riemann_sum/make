@@ -1,3 +1,5 @@
 #!/bin/bash
 nasm -f elf64 -Ox riemann.asm
 ld -o riemann riemann.o
+#gcc -nostartfiles -o riemann riemann.o -no-pie
+#gcc -nostartfiles riemann.o -o riemann -no-pie -lc

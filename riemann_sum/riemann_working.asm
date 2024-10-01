@@ -64,10 +64,20 @@ _start:
 								;   x += stepping;
         
 		movss xmm1, [x]			; move first x into xmm1
-		call fillxmm		
+		push rcx
+		mov rcx, 0
+		loop2:
+			cmp rcx, 3
+			jge calc
+			shufps xmm1, xmm1, 0x90	; shift x one to the left
+			call calcx			; next f(x) now lays in xmm0
+			movss xmm1, xmm0
+			inc rcx
+			jmp loop2
+		
 		calc: 
+		call calcx
 		pop rcx
-        call calcx
 		mulps xmm1, xmm1    	; x*x
         mov eax, 1
         cvtsi2ss xmm2, eax
@@ -95,19 +105,6 @@ _start:
         addss xmm0, xmm4		; calculate new x for next f(x)
 		movss [x], xmm0
 		ret
-
-    fillxmm:
-        push rcx
-		mov rcx, 0
-		loop2:
-			cmp rcx, 3
-			jge calc
-			shufps xmm1, xmm1, 0x90	; shift x one to the left
-			call calcx			; next f(x) now lays in xmm0
-			movss xmm1, xmm0
-			inc rcx
-			jmp loop2
-        pop rcx
 
     end1:
 	movss xmm0, [sum]
