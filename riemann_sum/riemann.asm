@@ -1,35 +1,24 @@
-%define  SYS_EXIT  1
-%define  SYS_READ  3
-%define  SYS_WRITE 4
-%define  STDIN     0
-%define  STDOUT    1
-%define  KERNEL    0x80
-
 ; This is a assembly implementation from riemann.c which calculates pi using SSE2
 bits 64
 
-;extern GetTickCount
+extern GetTickCount
 
-global _start					; make our main label visible to the linker
-;global Start					; make our main label visible to the linker
-
-extern printf
+global Start					; make our main label visible to the linker
 
 section .data                   ; these are our variables
-    interval dd 32 ; 524288;
+    interval dd 524288
     one_as_float dd 1.0
     stepping dd 0.0
     x dd 0.0
     sum dd 0.0
 
-section .bss
-    float_str resb 32
-
 section .text
+Start:
 
-_start:
-;Start:
-
+	;Startzeit
+	Call GetTickCount
+	push rax
+	
 	;interval angeben
 	mov ebx, [interval]
 	;mov ebx, eax			;zähler behalten für cmp
@@ -45,10 +34,6 @@ _start:
     cvtsi2ss xmm1, eax
     divss xmm0, xmm1
     movss [x], xmm0
-
-	;Startzeit
-	;Call GetTickCount
-	;push rax
 	
     ;Zähler initialisieren
 	mov rcx, 0
@@ -64,40 +49,7 @@ _start:
 								;   x += stepping;
         
 		movss xmm1, [x]			; move first x into xmm1
-		call fillxmm		
-		calc: 
-		pop rcx
-        call calcx
-		mulps xmm1, xmm1    	; x*x
-        mov eax, 1
-        cvtsi2ss xmm2, eax
-		shufps xmm2, xmm2, 0x0	; push '1' into all four segments of xmm2
-		
-        addps xmm1, xmm2    	; 1+x*x
-        mov eax, 4
-        cvtsi2ss xmm0, eax  	; 4
-		shufps xmm0, xmm0, 0x0	; push '4' into all four segments of xmm0
-		
-        divps xmm0, xmm1    	; 4/(1+x*x) --> in xmm0 steht nun unsere zwischensumme
-		haddps xmm0, xmm0
-		haddps xmm0, xmm0		; Horizontal addieren, um nicht zwischensumme zu oft zu addieren
-		movss xmm2, [sum]
-        addss xmm0, xmm2
-        movss [sum], xmm0     	;summe wird um zwischensumme ergänzt
-
-        ;For-END
-        add rcx, 4				; statt inc rcx -> add 4, weil 4 Ops gleichzeitig
-        jmp loop1
-
-	calcx:
-		movss xmm0, [x]
-        movss xmm4, [stepping]
-        addss xmm0, xmm4		; calculate new x for next f(x)
-		movss [x], xmm0
-		ret
-
-    fillxmm:
-        push rcx
+		push rcx
 		mov rcx, 0
 		loop2:
 			cmp rcx, 3
@@ -107,21 +59,68 @@ _start:
 			movss xmm1, xmm0
 			inc rcx
 			jmp loop2
-        pop rcx
+		
+		calc: 
+		call calcx
+		pop rcx
+		mulps xmm1, xmm1    	; x*x
+        mov rax, 1
+        cvtsi2ss xmm0, eax
+		shufps xmm0, xmm0, 0x0	; push '1' into all four segments of xmm2
+		
+        addps xmm1, xmm0    	; 1+x*x
+        mov rax, 4
+        cvtsi2ss xmm0, eax  	; 4
+		shufps xmm0, xmm0, 0x0	; push '4' into all four segments of xmm0
+		
+        divps xmm0, xmm1    	; 4/(1+x*x) --> in xmm0 steht nun unsere zwischensumme
+		haddps xmm0, xmm0
+		haddps xmm0, xmm0		; Horizontal addieren, um nicht zwischensumme zu oft zu addieren
+		movss xmm1, [sum]
+        addss xmm0, xmm1
+        movss [sum], xmm0     	;summe wird um zwischensumme ergänzt
+
+        ;For-END
+        add rcx, 4				; statt inc rcx -> add 4, weil 4 Ops gleichzeitig
+        jmp loop1
+
+	calcx:
+		movss xmm0, [x]
+        movss xmm2, [stepping]
+        addss xmm0, xmm2		; calculate new x for next f(x)
+		movss [x], xmm0
+		ret
 
     end1:
 	movss xmm0, [sum]
 	cvtsi2ss xmm1, ebx
 	divss xmm0, xmm1		; Sum/interval
 	
-	;call GetTickCount
-	;mov rbx, rax
-	;pop rax
-	;sub rbx, rax
+	call GetTickCount
+	mov rbx, rax
+	pop rax
+	sub rbx, rax
+	
+	ret						; can be ommitted
+	
 
-	;ret						; can be ommitted
-
-    ; Exit the program
-    mov eax, 60             ; sys_exit syscall number for x86_64
-    xor edi, edi            ; Exit code 0
-    syscall                 ; Invoke system call
+	;Schleife, um Ticks zu erhoehen
+	; mov edx, 10000
+	; begin:
+	; mov rax, 524288
+	; mov [interval], rax
+	; mov ebx, 0
+	; cvtsi2ss xmm1, ebx
+	; movss [stepping], xmm1
+	; mov ebx, 0
+	; cvtsi2ss xmm1, ebx
+	; movss [x], xmm1
+	; mov ebx, 0
+	; cvtsi2ss xmm1, ebx
+	; movss [sum], xmm1
+	
+	; ...
+	
+	; dec edx
+	; cmp edx, 0
+	; jge begin
